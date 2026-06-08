@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Quản Lý NVPTTTT</title>
+    <meta name="description" content="Dashboard theo dõi năng suất, thu nhập và nhân sự của nhân viên phát triển thị trường">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Chart.js for beautiful charts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- SheetJS for reading Excel files in browser -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="logo-area">
+                <div class="logo-icon"></div>
+                <h1>NVPTTTT System</h1>
+            </div>
+            <nav class="main-nav">
+                <a href="#" class="nav-item active" data-tab="overview">
+                    <span class="icon">📊</span>
+                    <span>Tổng Quan Nhân Sự</span>
+                </a>
+                <a href="#" class="nav-item" data-tab="turnover">
+                    <span class="icon">📉</span>
+                    <span>Tỷ Lệ Nghỉ Việc</span>
+                </a>
+                <a href="#" class="nav-item" data-tab="productivity">
+                    <span class="icon">📈</span>
+                    <span>Năng Suất & Thu Nhập</span>
+                </a>
+            </nav>
+            <div class="filter-area" style="padding: 1.25rem; border-top: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color); margin-bottom: 1.5rem;">
+                <p style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 0.75rem;">Lọc theo ngày vào làm</p>
+                <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                    <input type="date" id="filter-start" style="width: 100%; padding: 0.5rem; border-radius: 6px; background: rgba(0,0,0,0.2); border: 1px solid var(--border-color); color: var(--text-primary);" />
+                    <input type="date" id="filter-end" style="width: 100%; padding: 0.5rem; border-radius: 6px; background: rgba(0,0,0,0.2); border: 1px solid var(--border-color); color: var(--text-primary);" />
+                    <button id="btn-apply-filter" class="upload-btn" style="background: var(--accent-indigo); margin-top: 0.5rem;">Áp dụng lọc</button>
+                    <p id="filter-status" class="status-text"></p>
+                </div>
+            </div>
+            <div class="upload-area">
+                <p class="upload-label">Cập nhật dữ liệu Excel</p>
+                <label for="excel-upload" class="upload-btn">
+                    <span class="icon">📁</span> Chọn File Excel
+                </label>
+                <input type="file" id="excel-upload" accept=".xlsx, .xls, .csv" />
+                <p id="upload-status" class="status-text"></p>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="top-header">
+                <h2>Dashboard Phân Tích</h2>
+                <div class="user-profile">
+                    <div class="avatar">Admin</div>
+                </div>
+            </header>
+
+            <div class="content-scroll">
+                <!-- Overview Tab -->
+                <section id="tab-overview" class="tab-pane active">
+                    <div class="kpi-cards">
+                        <div class="kpi-card glass">
+                            <div class="kpi-title">Tổng Nhân Sự</div>
+                            <div class="kpi-value" id="kpi-total">0</div>
+                            <div class="kpi-trend">Đã có trên hệ thống</div>
+                        </div>
+                        <div class="kpi-card glass">
+                            <div class="kpi-title">Đang Làm Việc</div>
+                            <div class="kpi-value" id="kpi-active">0</div>
+                            <div class="kpi-trend positive" id="kpi-active-pct">0%</div>
+                        </div>
+                        <div class="kpi-card glass">
+                            <div class="kpi-title">Đã Nghỉ Việc</div>
+                            <div class="kpi-value" id="kpi-resigned">0</div>
+                            <div class="kpi-trend negative" id="kpi-resigned-pct">0%</div>
+                        </div>
+                        <div class="kpi-card glass highlight">
+                            <div class="kpi-title">NV < 3 Tháng Tuổi</div>
+                            <div class="kpi-value" id="kpi-newbie">0</div>
+                            <div class="kpi-trend">Nhóm cần theo dõi sát</div>
+                        </div>
+                    </div>
+
+                    <div class="charts-grid">
+                        <div class="chart-container glass">
+                            <h3>Tỷ lệ nhân sự theo Vùng / Trạng Thái</h3>
+                            <div class="chart-wrapper">
+                                <canvas id="statusChart"></canvas>
+                            </div>
+                        </div>
+                        <div class="chart-container glass">
+                            <h3>Phân bố thâm niên (Đang làm vs Đã nghỉ)</h3>
+                            <div class="chart-wrapper">
+                                <canvas id="tenureChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Turnover Tab -->
+                <section id="tab-turnover" class="tab-pane">
+                    <div class="header-action">
+                        <h3>Phân tích nhân sự đã nghỉ việc</h3>
+                    </div>
+                    
+                    <div class="charts-grid-full mt-4">
+                        <div class="chart-container glass">
+                            <h3>Số lượng nghỉ việc theo Quản lý khu vực (AM)</h3>
+                            <div class="chart-wrapper bar-chart">
+                                <canvas id="amTurnoverChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="charts-grid-full mt-4">
+                        <div class="chart-container glass">
+                            <h3>Số lượng nghỉ việc theo Bưu cục (Top 10)</h3>
+                            <div class="chart-wrapper bar-chart">
+                                <canvas id="bcTurnoverChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Productivity & Income Tab -->
+                <section id="tab-productivity" class="tab-pane">
+                    <div class="header-action">
+                        <h3>Báo cáo phân vị thu nhập NVPTTTT</h3>
+                        <p class="subtitle" style="color: var(--text-secondary); font-size: 0.875rem; margin-top: 0.5rem;">
+                            (Chỉ hiển thị khi file Excel có cột "Thu nhập")
+                        </p>
+                    </div>
+
+                    <div class="table-container glass mt-4">
+                        <table class="data-table" id="percentileTable">
+                            <thead>
+                                <tr>
+                                    <th>Nhóm phân vị</th>
+                                    <th>Số lượng (NV)</th>
+                                    <th>Thâm niên TB</th>
+                                    <th>Thu nhập TB (VNĐ)</th>
+                                    <th>Thu nhập Trần (VNĐ)</th>
+                                    <th>Tỷ lệ nghỉ việc</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td colspan="6" style="text-align: center; padding: 2rem;">Chưa có dữ liệu "Thu nhập"</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <div class="charts-grid-full mt-4">
+                        <div class="chart-container glass">
+                            <h3>Tỷ lệ nghỉ việc theo nhóm thu nhập (%)</h3>
+                            <div class="chart-wrapper">
+                                <canvas id="percentileTurnoverChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>
