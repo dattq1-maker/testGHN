@@ -43,13 +43,12 @@
                     <p id="filter-status" class="status-text"></p>
                 </div>
             </div>
-            <div class="upload-area">
-                <p class="upload-label">Cập nhật dữ liệu Excel</p>
-                <label for="excel-upload" class="upload-btn">
-                    <span class="icon">📁</span> Chọn File Excel
-                </label>
-                <input type="file" id="excel-upload" accept=".xlsx, .xls, .csv" />
-                <p id="upload-status" class="status-text"></p>
+            <div class="filter-area" style="padding: 1.25rem; border-top: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color); margin-bottom: 1.5rem;">
+                <p style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 0.75rem;">Trạng thái đồng bộ tự động</p>
+                <div style="background: rgba(16, 185, 129, 0.1); padding: 0.75rem; border-radius: 8px; border: 1px solid rgba(16, 185, 129, 0.2); margin-bottom: 0.5rem;">
+                    <p id="sync-status" style="font-size: 0.8rem; color: var(--text-secondary);">Đang kiểm tra dữ liệu...</p>
+                </div>
+                <button id="btn-reload-data" class="upload-btn" style="background: var(--accent-blue); width: 100%;">Tải lại dữ liệu mới nhất</button>
             </div>
         </aside>
 
@@ -127,6 +126,15 @@
                             </div>
                         </div>
                     </div>
+
+                    <div class="charts-grid-full mt-4">
+                        <div class="chart-container glass">
+                            <h3>Số lượng nghỉ việc theo Phân loại thâm niên</h3>
+                            <div class="chart-wrapper bar-chart">
+                                <canvas id="tenureTurnoverChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
                 </section>
 
                 <!-- Productivity & Income Tab -->
@@ -144,7 +152,6 @@
                                 <tr>
                                     <th>Nhóm phân vị</th>
                                     <th>Số lượng (NV)</th>
-                                    <th>Thâm niên TB</th>
                                     <th>Thu nhập TB (VNĐ)</th>
                                     <th>Thu nhập Trần (VNĐ)</th>
                                     <th>Tỷ lệ nghỉ việc</th>
@@ -152,7 +159,7 @@
                             </thead>
                             <tbody>
                                 <tr>
-                                    <td colspan="6" style="text-align: center; padding: 2rem;">Chưa có dữ liệu "Thu nhập"</td>
+                                    <td colspan="5" style="text-align: center; padding: 2rem;">Chưa có dữ liệu "Thu nhập"</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -163,6 +170,58 @@
                             <h3>Tỷ lệ nghỉ việc theo nhóm thu nhập (%)</h3>
                             <div class="chart-wrapper">
                                 <canvas id="percentileTurnoverChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Income Warning Section -->
+                    <div class="header-action mt-4" style="margin-top: 3rem;">
+                        <h3>Danh sách Cảnh báo Thu nhập</h3>
+                        <p class="subtitle" style="color: var(--text-secondary); font-size: 0.875rem; margin-top: 0.5rem;">
+                            Theo dõi các bất thường về quỹ lương (Sắp xếp theo mức độ rủi ro)
+                        </p>
+                    </div>
+                    
+                    <div class="charts-grid mt-4">
+                        <!-- Warning Low Income -->
+                        <div class="chart-container glass" style="border-top: 4px solid #f59e0b;">
+                            <h3 style="color: #f59e0b;">Cảnh báo Thu nhập Thấp (&lt; 5 triệu)</h3>
+                            <div class="table-container" style="max-height: 400px; overflow-y: auto; padding-right: 0.5rem;">
+                                <table class="data-table" id="warningLowTable">
+                                    <thead style="position: sticky; top: 0; background: var(--surface-light); z-index: 1;">
+                                        <tr>
+                                            <th>Mã NV</th>
+                                            <th>Tên NV</th>
+                                            <th>Bưu Cục</th>
+                                            <th>Thâm niên</th>
+                                            <th>Thu nhập (VNĐ)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr><td colspan="5" style="text-align: center; padding: 2rem; color: var(--text-secondary);">Đang phân tích...</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Warning High Income -->
+                        <div class="chart-container glass" style="border-top: 4px solid #ef4444;">
+                            <h3 style="color: #ef4444;">Cảnh báo Rủi ro Gian lận (&gt; 40 triệu)</h3>
+                            <div class="table-container" style="max-height: 400px; overflow-y: auto; padding-right: 0.5rem;">
+                                <table class="data-table" id="warningHighTable">
+                                    <thead style="position: sticky; top: 0; background: var(--surface-light); z-index: 1;">
+                                        <tr>
+                                            <th>Mã NV</th>
+                                            <th>Tên NV</th>
+                                            <th>Bưu Cục</th>
+                                            <th>Thâm niên</th>
+                                            <th>Thu nhập (VNĐ)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr><td colspan="5" style="text-align: center; padding: 2rem; color: var(--text-secondary);">Đang phân tích...</td></tr>
+                                    </tbody>
+                                </table>
                             </div>
                         </div>
                     </div>

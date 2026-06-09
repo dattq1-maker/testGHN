@@ -8,6 +8,7 @@ let tenureChartInstance = null;
 let amTurnoverChartInstance = null;
 let bcTurnoverChartInstance = null;
 let percentileTurnoverChartInstance = null;
+let tenureTurnoverChartInstance = null;
 
 // Chart.js Default Config for Dark Theme
 Chart.defaults.color = '#94a3b8';
@@ -40,68 +41,19 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // Excel Upload Logic
-    const uploadInput = document.getElementById('excel-upload');
-    const uploadStatus = document.getElementById('upload-status');
+    // UI Elements for Data Loading
+    const syncStatus = document.getElementById('sync-status');
+    const btnReload = document.getElementById('btn-reload-data');
 
-    uploadInput.addEventListener('change', (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
+    // Auto load data on startup
+    loadData(syncStatus);
 
-        uploadStatus.textContent = 'Đang đọc dữ liệu...';
-        uploadStatus.style.color = '#f59e0b';
-
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            try {
-                const data = new Uint8Array(e.target.result);
-                const workbook = XLSX.read(data, { type: 'array' });
-                // Find sheets, allowing for slight case variations
-                const sheetNames = workbook.SheetNames;
-                const dataLuongName = sheetNames.find(s => s.toLowerCase().includes('data lương')) || sheetNames.find(s => s.toLowerCase().includes('lương')) || sheetNames[0];
-                const workforceName = sheetNames.find(s => s.toLowerCase().includes('workforce')) || sheetNames.find(s => s.toLowerCase().includes('nhân sự')) || sheetNames[1];
-
-                if (!workbook.Sheets[dataLuongName] || !workbook.Sheets[workforceName]) {
-                    throw new Error("File Excel phải chứa đủ 2 sheet: 'Data lương' và 'Workforce'");
-                }
-
-                // Convert both sheets to JSON
-                const dataLuongArray = XLSX.utils.sheet_to_json(workbook.Sheets[dataLuongName]);
-                const workforceArray = XLSX.utils.sheet_to_json(workbook.Sheets[workforceName]);
-                
-                // Create lookup dictionary from Workforce based on ID
-                const workforceDict = {};
-                workforceArray.forEach(row => {
-                    const id = row['ID'] || row['id'] || row['Mã NV'] || row['Mã nhân viên'];
-                    if (id) workforceDict[id] = row;
-                });
-
-                // Merge data: Base is Data lương, pull HR info from Workforce
-                originalRawData = dataLuongArray.map(row => {
-                    const id = row['ID'] || row['id'] || row['Mã NV'] || row['Mã nhân viên'];
-                    const wfRow = id ? (workforceDict[id] || {}) : {};
-                    
-                    return {
-                        ...wfRow, // Spread Workforce properties (Trạng thái, Thâm niên, etc)
-                        ...row    // Spread Data lương properties (overwrite ID, add Thu nhập)
-                    };
-                });
-
-                rawData = [...originalRawData];
-                
-                uploadStatus.textContent = `Đã tải và ghép thành công ${rawData.length} bản ghi từ 2 sheet!`;
-                uploadStatus.style.color = '#10b981';
-                
-                // Process Data and Render Charts
-                processAndRenderData();
-            } catch (err) {
-                console.error(err);
-                uploadStatus.textContent = err.message.includes('sheet') ? err.message : 'Lỗi khi đọc file Excel!';
-                uploadStatus.style.color = '#ef4444';
-            }
-        };
-        reader.readAsArrayBuffer(file);
-    });
+    // Manual reload button
+    if (btnReload) {
+        btnReload.addEventListener('click', () => {
+            loadData(syncStatus);
+        });
+    }
 
     // Date Filter Logic
     const btnFilter = document.getElementById('btn-apply-filter');
@@ -135,14 +87,60 @@ document.addEventListener('DOMContentLoaded', () => {
             const joinTimestamp = new Date(joinDateStr).getTime();
             if (isNaN(joinTimestamp)) return false;
 
-            return joinTimestamp >= startTimestamp && joinTimestamp <= endTimestamp;
+            // Find resignation date
+            const resignDateStr = row['Ngày nghỉ việc'] || row['Tháng nghỉ việc'] || null;
+            let resignTimestamp = Infinity;
+            if (resignDateStr) {
+                const parsed = new Date(resignDateStr).getTime();
+                if (!isNaN(parsed)) resignTimestamp = parsed;
+            }
+
+            // POINT-IN-TIME LOGIC
+            // Include if they joined at or before the End Date
+            // AND (they never resigned OR they resigned at or after the Start Date)
+            return joinTimestamp <= endTimestamp && resignTimestamp >= startTimestamp;
         });
 
-        filterStatus.textContent = `Đã lọc còn ${rawData.length} bản ghi.`;
+        filterStatus.textContent = `Đã lọc còn ${rawData.length} nhân sự đang làm việc trong khoảng thời gian này.`;
         filterStatus.style.color = '#3b82f6';
         processAndRenderData();
     });
 });
+
+async function loadData(statusElement) {
+    if (!statusElement) return;
+    statusElement.textContent = 'Đang tải dữ liệu tự động...';
+    statusElement.style.color = '#f59e0b';
+    
+    try {
+        // Thêm ?t=timestamp để chống cache của trình duyệt (giúp luôn lấy file mới nhất)
+        const cacheBuster = new Date().getTime();
+        const response = await fetch(`./latest_data.json?t=${cacheBuster}`);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const payload = await response.json();
+        
+        if (!payload || !payload.data) {
+            throw new Error('Định dạng dữ liệu không hợp lệ!');
+        }
+        
+        originalRawData = payload.data;
+        rawData = [...originalRawData];
+        lastUpdatedStr = payload.last_updated || "Không rõ";
+        
+        statusElement.textContent = `Đã đồng bộ thành công ${rawData.length} bản ghi! (Cập nhật: ${lastUpdatedStr})`;
+        statusElement.style.color = '#10b981';
+        
+        processAndRenderData();
+        
+    } catch (error) {
+        console.error('Error loading JSON data:', error);
+        statusElement.textContent = 'Lỗi tải dữ liệu. Vui lòng kiểm tra file latest_data.json!';
+        statusElement.style.color = '#ef4444';
+    }
+}
 
 function processAndRenderData() {
     if (rawData.length === 0) return;
@@ -183,14 +181,34 @@ function processAndRenderData() {
     renderTenureChart();
     renderAmTurnoverChart();
     renderBcTurnoverChart();
+    renderTenureTurnoverChart();
 
     // 3. Process Productivity / Income Percentiles if data exists
-    if (rawData.length > 0 && rawData[0].hasOwnProperty('Thu nhập')) {
-        renderPercentileReport();
+    const incomeCol = Object.keys(rawData[0]).find(k => k.toLowerCase().includes('lương nếu đủ 30 ngày')) || Object.keys(rawData[0]).find(k => k.toLowerCase().includes('thu nhập'));
+
+    if (rawData.length > 0 && incomeCol) {
+        renderPercentileReport(incomeCol);
+        renderIncomeWarnings(incomeCol);
     } else {
         const tbody = document.querySelector('#percentileTable tbody');
-        tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; padding: 2rem; color: var(--text-secondary);">Chưa có dữ liệu cột "Thu nhập" trong file Excel.</td></tr>`;
+        tbody.replaceChildren(); // Safely clear
+        
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = 5;
+        td.style.textAlign = 'center';
+        td.style.padding = '2rem';
+        td.style.color = 'var(--text-secondary)';
+        td.textContent = 'Chưa có dữ liệu cột "Lương nếu đủ 30 ngày" trong file Excel.';
+        
+        tr.appendChild(td);
+        tbody.appendChild(tr);
+        
         if (percentileTurnoverChartInstance) percentileTurnoverChartInstance.destroy();
+        
+        // Clear warnings too
+        document.querySelector('#warningLowTable tbody').replaceChildren();
+        document.querySelector('#warningHighTable tbody').replaceChildren();
     }
 }
 
@@ -335,33 +353,136 @@ function renderBcTurnoverChart() {
     });
 }
 
-function renderPercentileReport() {
-    // Sort by Income
-    const sortedData = [...rawData].filter(r => !isNaN(parseFloat(r['Thu nhập'])))
-                                 .sort((a, b) => parseFloat(a['Thu nhập']) - parseFloat(b['Thu nhập']));
+function renderIncomeWarnings(incomeCol) {
+    if (rawData.length === 0 || !incomeCol) return;
+
+    // Lọc data hợp lệ
+    const validData = rawData.filter(row => row[incomeCol] && !isNaN(parseFloat(row[incomeCol])));
+
+    // Tách 2 danh sách
+    const lowIncomeData = validData.filter(row => parseFloat(row[incomeCol]) < 5000000);
+    const highIncomeData = validData.filter(row => parseFloat(row[incomeCol]) > 40000000);
+
+    // Sắp xếp: Thấp xếp người thấp nhất lên đầu, Cao xếp người cao nhất lên đầu
+    lowIncomeData.sort((a, b) => parseFloat(a[incomeCol]) - parseFloat(b[incomeCol]));
+    highIncomeData.sort((a, b) => parseFloat(b[incomeCol]) - parseFloat(a[incomeCol]));
+
+    const formatCurrency = (val) => new Intl.NumberFormat('vi-VN').format(Math.round(val));
+
+    const renderTable = (tableId, dataList) => {
+        const tbody = document.querySelector(`#${tableId} tbody`);
+        tbody.replaceChildren();
+
+        if (dataList.length === 0) {
+            const tr = document.createElement('tr');
+            const td = document.createElement('td');
+            td.colSpan = 5;
+            td.style.textAlign = 'center';
+            td.style.padding = '2rem';
+            td.style.color = 'var(--text-secondary)';
+            td.textContent = 'Không có báo cáo bất thường nào.';
+            tr.appendChild(td);
+            tbody.appendChild(tr);
+            return;
+        }
+
+        dataList.forEach(row => {
+            const tr = document.createElement('tr');
+            
+            const idCol = row['ID'] || row['id'] || row['Mã NV'] || row['Mã nhân viên'] || 'N/A';
+            const nameCol = row['Tên nhân viên'] || row['Tên'] || 'N/A';
+            const bcCol = row['Bưu cục'] || 'N/A';
+            const tenureCol = row['Phân loại thâm niên'] || 'Chưa rõ';
+            const incomeVal = parseFloat(row[incomeCol]);
+
+            [idCol, nameCol, bcCol, tenureCol].forEach(text => {
+                const td = document.createElement('td');
+                td.textContent = text;
+                tr.appendChild(td);
+            });
+
+            const tdIncome = document.createElement('td');
+            tdIncome.textContent = `${formatCurrency(incomeVal)} đ`;
+            tdIncome.style.fontWeight = '600';
+            tdIncome.style.color = 'inherit';
+            tr.appendChild(tdIncome);
+
+            tbody.appendChild(tr);
+        });
+    };
+
+    renderTable('warningLowTable', lowIncomeData);
+    renderTable('warningHighTable', highIncomeData);
+}
+
+function renderTenureTurnoverChart() {
+    // Only resigned
+    const resignedData = rawData.filter(r => (r['Trạng thái'] || '').includes('Nghỉ việc'));
     
-    if (sortedData.length === 0) return;
+    const tenureCount = {};
+    resignedData.forEach(row => {
+        const tenure = row['Phân loại thâm niên'] || 'Chưa phân loại';
+        tenureCount[tenure] = (tenureCount[tenure] || 0) + 1;
+    });
+
+    // Sort by count desc
+    const sortedTenures = Object.entries(tenureCount).sort((a, b) => b[1] - a[1]);
+
+    const ctx = document.getElementById('tenureTurnoverChart').getContext('2d');
+    if (tenureTurnoverChartInstance) tenureTurnoverChartInstance.destroy();
+
+    tenureTurnoverChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: sortedTenures.map(item => item[0]),
+            datasets: [{
+                label: 'Số người nghỉ việc',
+                data: sortedTenures.map(item => item[1]),
+                backgroundColor: '#ec4899', // Pink color
+                borderRadius: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false }
+            },
+            scales: {
+                y: { beginAtZero: true }
+            }
+        }
+    });
+}
+
+function renderPercentileReport(incomeCol) {
+    if (rawData.length === 0 || !incomeCol) return;
+
+    // Filter valid income rows
+    const validData = rawData.filter(row => row[incomeCol] && !isNaN(parseFloat(row[incomeCol])));
+    
+    // Sort by income ascending
+    validData.sort((a, b) => parseFloat(a[incomeCol]) - parseFloat(b[incomeCol]));
+    
+    if (validData.length === 0) return;
 
     const percentiles = [10, 25, 50, 75, 90, 95, 99, 100];
     const groupNames = ['Dưới P10', 'P10 - P25', 'P25 - P50', 'P50 - P75', 'P75 - P90', 'P90 - P95', 'P95 - P99', 'P99 - P100'];
     
     const results = [];
     let startIdx = 0;
-    const total = sortedData.length;
+    const total = validData.length;
 
     for (let i = 0; i < percentiles.length; i++) {
         let endIdx = Math.floor((percentiles[i] / 100.0) * total);
         if (endIdx === startIdx) endIdx += 1;
         
-        const groupData = sortedData.slice(startIdx, endIdx);
+        const groupData = validData.slice(startIdx, endIdx);
         
         if (groupData.length > 0) {
             const count = groupData.length;
-            const avgIncome = groupData.reduce((sum, row) => sum + parseFloat(row['Thu nhập']), 0) / count;
-            const maxIncome = Math.max(...groupData.map(row => parseFloat(row['Thu nhập'])));
-            
-            // Calculate average tenure based on 'Số ngày làm việc'
-            const avgTenure = groupData.reduce((sum, row) => sum + parseFloat(row['Số ngày làm việc'] || 0), 0) / count;
+            const avgIncome = groupData.reduce((sum, row) => sum + parseFloat(row[incomeCol]), 0) / count;
+            const maxIncome = Math.max(...groupData.map(row => parseFloat(row[incomeCol])));
             
             const resignedCount = groupData.filter(row => (row['Trạng thái'] || '').includes('Nghỉ việc')).length;
             const turnoverRate = (resignedCount / count) * 100;
@@ -371,16 +492,15 @@ function renderPercentileReport() {
                 count: count,
                 avgIncome: avgIncome,
                 maxIncome: maxIncome,
-                avgTenure: avgTenure,
                 turnoverRate: turnoverRate
             });
         }
         startIdx = endIdx;
     }
 
-    // Render Table
+    // Render Table (Security Update: Avoid innerHTML)
     const tbody = document.querySelector('#percentileTable tbody');
-    tbody.innerHTML = '';
+    tbody.replaceChildren(); // Safely clear children
     
     results.forEach(row => {
         const tr = document.createElement('tr');
@@ -393,14 +513,36 @@ function renderPercentileReport() {
         if (row.turnoverRate > 50) badgeClass = 'badge-warning';
         if (row.turnoverRate > 80) badgeClass = 'badge-danger';
 
-        tr.innerHTML = `
-            <td style="font-weight: 500; color: var(--accent-blue);">${row.groupName}</td>
-            <td>${row.count}</td>
-            <td>${Math.round(row.avgTenure)} ngày</td>
-            <td>${formatCurrency(row.avgIncome)} đ</td>
-            <td>${formatCurrency(row.maxIncome)} đ</td>
-            <td><span class="badge ${badgeClass}">${row.turnoverRate.toFixed(1)}%</span></td>
-        `;
+        // Column 1: Group Name
+        const tdGroup = document.createElement('td');
+        tdGroup.style.fontWeight = '500';
+        tdGroup.style.color = 'var(--accent-blue)';
+        tdGroup.textContent = row.groupName;
+        tr.appendChild(tdGroup);
+
+        // Column 2: Count
+        const tdCount = document.createElement('td');
+        tdCount.textContent = row.count.toString();
+        tr.appendChild(tdCount);
+
+        // Column 3: Avg Income
+        const tdAvgIncome = document.createElement('td');
+        tdAvgIncome.textContent = `${formatCurrency(row.avgIncome)} đ`;
+        tr.appendChild(tdAvgIncome);
+
+        // Column 5: Max Income
+        const tdMaxIncome = document.createElement('td');
+        tdMaxIncome.textContent = `${formatCurrency(row.maxIncome)} đ`;
+        tr.appendChild(tdMaxIncome);
+
+        // Column 6: Turnover Rate
+        const tdTurnover = document.createElement('td');
+        const spanBadge = document.createElement('span');
+        spanBadge.className = `badge ${badgeClass}`;
+        spanBadge.textContent = `${row.turnoverRate.toFixed(1)}%`;
+        tdTurnover.appendChild(spanBadge);
+        tr.appendChild(tdTurnover);
+
         tbody.appendChild(tr);
     });
 
